@@ -5,31 +5,35 @@ const { placeOrder } = require('../services/boostpanel');
 
 router.post('/free-likes', async (req, res) => {
   const { postUrl, userIp } = req.body;
-
   if (!postUrl || !userIp) {
     return res.status(400).json({ error: 'Post URL and IP required' });
   }
-
   try {
-    // Check rate limit (10 hours cooldown)
     const tenHours = 10 * 60 * 60 * 1000;
     const lastRequest = await Request.findOne({ userIp });
 
-    if (lastRequest && Date.now() - new Date(lastRequest.lastRequest) < tenHours) {
-      return res.status(429).json({ error: 'You can only get free likes every 10 hours' });
+    if (!lastRequest) {
+      // First request: Instant likes
+      const randomLikes = Math.floor(Math.random() * 30) + 1; // Random 1-30 likes
+      const smmResponse = await placeOrder(postUrl, randomLikes);
+      await Request.create({ userIp, lastRequest: new Date(), requestCount: 1 });
+      return res.json({ message: `${randomLikes} free likes sent to your post instantly! Next request in 10 hours.` });
+    } else {
+      // Subsequent requests: Check cooldown
+      const timeSinceLast = Date.now() - new Date(lastRequest.lastRequest);
+      if (timeSinceLast < tenHours) {
+        const remainingTime = Math.ceil((tenHours - timeSinceLast) / (60 * 60 * 1000));
+        return res.status(429).json({ error: `Wait ${remainingTime} hours for your next free likes.` });
+      }
+      const randomLikes = Math.floor(Math.random() * 30) + 1; // Random 1-30 likes
+      const smmResponse = await placeOrder(postUrl, randomLikes);
+      await Request.findOneAndUpdate(
+        { userIp },
+        { lastRequest: new Date(), requestCount: (lastRequest.requestCount || 0) + 1 },
+        { upsert: true }
+      );
+      res.json({ message: `${randomLikes} free likes sent to your post! No SMM panel charges.` });
     }
-
-    // Place order via BoostPanel
-    const smmResponse = await placeOrder(postUrl, 30);
-
-    // Update request time
-    await Request.findOneAndUpdate(
-      { userIp },
-      { userIp, lastRequest: new Date() },
-      { upsert: true }
-    );
-
-    res.json({ message: '30 likes sent to your post!' });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Something went wrong' });
