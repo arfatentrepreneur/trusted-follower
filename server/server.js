@@ -4,7 +4,7 @@ const port = 3000;
 
 app.use(express.json());
 
-const instagramRoutes = require('../routes/instagram-routes');
+const instagramRoutes = require('./routes/instagram-routes');
 app.use('/api', instagramRoutes);
 
 app.listen(port, () => {
